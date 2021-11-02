@@ -1,0 +1,26 @@
+;; Rename this file by the subnet in reverse order with .in-addr.arpa.
+;; Paste here all other servers in the current zone
+;
+$ORIGIN   {{ ptr }}.in-addr.arpa. 
+$TTL   3600
+@               IN      SOA     {{ ansible_hostname }}.{{ zone }}.	root.{{ zone }}. (
+				26102021		; serial
+				600			; refresh every 10 min
+				300			; retry in 5 min
+				2592000			; expire in 30 days
+				900			; minimum 15 min
+				)
+
+		IN	NS	{{ ansible_hostname }}.{{ zone }}.
+
+{%  for host in groups['dns-slaves'] %}
+{{"%+18s" % ("IN") }}{{"%+8s" % ("NS") }}{{ "%+13s" % (hostvars[host]['ansible_hostname']) }}.{{ zone }}.
+{% endfor %}
+{{ ansible_host.split('.')[-1] }}{{"%+16s" % ("IN") }}{{ "%+9s" % ("PTR") }}{{"%+12s" % (ansible_hostname) }}.{{ zone }}.
+{%  for host in groups['dns-slaves'] %}
+{{ hostvars[host]['ansible_host'].split('.')[-1] }}{{ "%+16s" % ("IN")}}{{"%+9s" % ("PTR") }}{{ "%+12s" % (hostvars[host]['ansible_hostname']) }}.{{ zone }}.
+{% endfor %}
+;; Paste here all nodes in reverse order and PTR type
+{% for key, value in records.items() %}
+{{ value.last }}{{ "%+16s" % ("IN") }}{{ "%+9s" % ("PTR") }}     {{ key }}.{{ zone }}.
+{% endfor %}

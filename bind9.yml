@@ -1,0 +1,231 @@
+---
+- name: install BIND9 server
+  hosts: all
+  become: yes
+
+
+  tasks: 
+    - block:
+      - name: '[RHEL] install packages'
+        yum:
+          name: '{{ item }}'
+          state: latest
+          update_cache: yes
+        loop:
+          - bind
+          - bind-utils
+        tags:
+          - install 
+  
+      - name: '[RHEL] create user named'
+        user:
+          name: named
+          create_home: no
+          system: yes
+  
+      - name: '[RHEL] create directories'
+        file:
+          path: "{{ item }}"
+          state: directory
+          owner: named
+          group: named
+          mode: '0750'
+        loop:
+          - /var/named/data/keys
+          - /var/log/named
+          - /run/named
+
+      - name: '[RHEL] create rndc.key on all BIND hosts'
+        shell:
+          cmd: /usr/sbin/rndc-confgen -a -A hmac-sha512 -b 512 &> /dev/null && chown named:named /etc/rndc.key && sed -n 2,3p /etc/rndc.key
+        register: rndc_key
+ 
+      - name: '[RHEL] create rndc.key on the controle node'
+        shell: 
+          cmd: /usr/sbin/rndc-confgen -a -A hmac-sha512 -b 512 &> /dev/null && sed -n 2,3p /etc/rndc.key
+        delegate_to: 127.0.0.1
+        register: rndc_key_master
+  
+      - name: '[RHEL] create KSK'
+        shell:
+          cmd: rm -rf /var/named/data/keys/* && cd /var/named/data/keys/ && dnssec-keygen -3 -a RSASHA256 -b 4096 -n ZONE -f KSK "{{ item }}"
+        loop:
+          - '{{ zone }}'
+          - '0.0.127.in-addr.arpa'
+          - '{{ ptr }}.in-addr.arpa'
+        when: 
+          - "'dns-slaves' not in group_names"
+
+      - name: '[RHEL] create ZSK'
+        shell:
+          cmd: cd /var/named/data/keys/ && dnssec-keygen -3 -a RSASHA256 -b 2048 -n ZONE "{{ item }}" && chown -R named:named /var/named/data/keys/
+        loop:
+          - '{{ zone }}'
+          - '0.0.127.in-addr.arpa'
+          - '{{ ptr }}.in-addr.arpa'
+        when: 
+          - "'dns-slaves' not in group_names"
+
+      - name: '[RHEL] copy zone file'
+        template:
+          src: '{{ item.src }}'
+          dest: /var/named/data/{{ item.dst }}
+          owner: named
+          group: named
+          mode: '0640'
+        loop: 
+          - { src: 'example.net.zone.j2', dst: 'example.net.zone' } 
+          - { src: '0.0.127.in-addr.arpa.zone.j2', dst: '0.0.127.in-addr.arpa.zone' } 
+          - { src: 'example-rev.net.zone.j2', dst: '{{ ptr }}.in-addr.arpa.zone' } 
+        when: 
+          - "'dns-slaves' not in group_names"
+ 
+      - name: '[RHEL] copy config file: master'
+        template:
+          src: named.conf.j2
+          dest: /etc/named.conf
+          owner: named
+          group: named
+          mode: '0640'
+          validate: /usr/sbin/named-checkconf -z %s
+        notify: restart-bind
+        when: 
+          - "'dns-slaves' not in group_names"
+ 
+      - name: '[RHEL] copy config file: slave'
+        template:
+          src: named-sl.conf.j2
+          dest: /etc/named.conf
+          owner: named
+          group: named
+          mode: '0640'
+        notify: restart-bind
+        when: 
+          - "'dns-slaves' in group_names"
+
+      - name: 'create rndc.conf'
+        template:
+          src: rndc.conf.j2
+          dest: /etc/rndc.conf
+        delegate_to: 127.0.0.1 
+
+      when: ansible_distribution_file_variety == 'RedHat'
+
+    - block:
+
+      - name: '[Debian] install packages'
+        apt:
+          name: '{{ item }}'
+          state: latest
+          update_cache: yes
+        loop:
+          - bind9
+          - bind9-utils
+        tags:
+          - install 
+
+      - name: '[Debian] create directories'
+        file:
+          path: "{{ item }}"
+          state: directory
+          owner: bind
+          group: bind
+          mode: '0750'
+        loop:
+          - /var/log/named
+          - /run/named
+          - /var/cache/bind/keys
+
+      - name: 'turn off default zone files'
+        lineinfile:
+          path: /etc/bind/named.conf
+          regexp: 'include "/etc/bind/named.conf.default-zones";'
+          line: '// include "/etc/bind/named.conf.default-zones";'
+
+      - name: '[Debian] create rndc.key on all BIND hosts'
+        shell:
+          cmd: /usr/sbin/rndc-confgen -a -A hmac-sha512 -b 512 &> /dev/null && chown bind:bind /etc/bind/rndc.key && sed -n 2,3p /etc/bind/rndc.key
+        register: rndc_key
+ 
+      - name: '[Debian] create rndc.key on the controle node'
+        shell: 
+          cmd: /usr/sbin/rndc-confgen -a -A hmac-sha512 -b 512 &> /dev/null && sed -n 2,3p /etc/rndc.key
+        delegate_to: 127.0.0.1
+        register: rndc_key_master
+
+      - name: '[Debian] create KSK'
+        shell:
+          cmd: rm -rf /var/cache/bind/keys/* && cd /var/cache/bind/keys/ && dnssec-keygen -3 -a RSASHA256 -b 4096 -n ZONE -f KSK "{{ item }}"
+        loop:
+          - '{{ zone }}'
+          - '0.0.127.in-addr.arpa'
+          - '{{ ptr }}.in-addr.arpa'
+        when: 
+          - "'dns-slaves' not in group_names"
+
+      - name: '[Debian] create ZSK'
+        shell:
+          cmd: cd /var/cache/bind/keys/ && dnssec-keygen -3 -a RSASHA256 -b 2048 -n ZONE "{{ item }}" && chown -R bind:bind /var/cache/bind/keys/
+        loop:
+          - '{{ zone }}'
+          - '0.0.127.in-addr.arpa'
+          - '{{ ptr }}.in-addr.arpa'
+        when: 
+          - "'dns-slaves' not in group_names"
+
+      - name: '[Debian] copy zone file'
+        template:
+          src: '{{ item.src }}'
+          dest: /var/lib/bind/{{ item.dst }}
+          owner: bind
+          group: bind
+          mode: '0660'
+        loop: 
+          - { src: 'example.net.zone.j2', dst: 'example.net.zone' } 
+          - { src: '0.0.127.in-addr.arpa.zone.j2', dst: '0.0.127.in-addr.arpa.zone' } 
+          - { src: 'example-rev.net.zone.j2', dst: '{{ ptr }}.in-addr.arpa.zone' } 
+        when: 
+          - "'dns-slaves' not in group_names"
+
+      - name: '[Debian] copy config file: master'
+        template:
+          src: named.conf.j2
+          dest: /etc/bind/named.conf.options
+          owner: bind
+          group: bind
+          mode: '0660'
+          validate: /usr/sbin/named-checkconf -z %s
+        notify: restart-bind
+        when: 
+          - "'dns-slaves' not in group_names"
+
+      - name: '[Debian] copy config file: slave'
+        template:
+          src: named-sl.conf.j2
+          dest: /etc/bind/named.conf.options
+          owner: bind
+          group: bind
+          mode: '0640'
+        notify: restart-bind
+        when:
+          - "'dns-slaves' in group_names"
+
+      - name: '[Debian] create rndc.conf'
+        template:
+          src: rndc.conf.j2
+          dest: /etc/rndc.conf
+        delegate_to: 127.0.0.1 
+
+      when: ansible_distribution_file_variety == 'Debian' 
+
+    - debug:
+        msg: "Debugging BIND"
+      notify: restart-bind
+
+  handlers: 
+
+    - name: restart-bind
+      systemd:
+        name: named.service 
+        state: restarted
+        enabled: yes

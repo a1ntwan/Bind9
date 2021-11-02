@@ -1,0 +1,19 @@
+zone: example.net
+
+ptr: 10.10.10
+
+rndc_node: 10.10.10.1
+
+
+records:
+  admin1:
+    forward: 100.10.20.30
+    type: A
+    last: 30
+    rev: 20.10.100.in-addr.arpa.
+  admin2:
+    forward: 100.10.20.31
+    type: A
+    last: 31
+    rev: 20.10.100.in-addr.arpa.
+

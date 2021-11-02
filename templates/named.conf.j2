@@ -1,0 +1,100 @@
+options {
+  version "...";
+{% if ansible_distribution_file_variety == 'RedHat' %}
+  directory "/var/named";
+  dump-file "/var/named/data/cache_dump.db";
+{% elif ansible_distribution_file_variety == 'Debian' %}
+  directory "/var/lib/bind";
+  dump-file "/var/lib/bind/cache_dump.db";
+{% endif %}
+  pid-file "/run/named/named.pid";
+  session-keyfile "/run/named/session.key";
+  # Change to acl name or subnet to restrict access  
+  allow-query { any; };
+  recursion yes;
+  # The address server listens on, all by default
+  listen-on port 53 { 127.0.0.1; {{ ansible_all_ipv4_addresses | join('; ') }}; };
+  listen-on-v6 port 53 { ::1; {{ ansible_all_ipv6_addresses | join('; ') }}; };
+  # Change to raw to increase productivity  
+  masterfile-format text;
+  dnssec-validation yes;
+  forward only;
+  forwarders { {{ forwarders | default('8.8.8.8; 8.8.4.4;') }} };
+};
+
+logging {
+  channel "default" {
+    file "/var/log/named/bind.log" versions 10 size 20m;
+    print-time yes;
+    print-severity yes;
+    print-category yes;
+    severity notice;
+  };
+
+  channel "queries" {
+    file "/var/log/named/queries.log" versions 10 size 20m;
+    print-time yes;
+    print-severity yes;
+    print-category yes;
+    severity debug;
+  };
+
+  category default { default; }; 
+  category queries { queries; }; 
+};
+
+# RNDC settings
+key "rndc-key" {
+  {{ rndc_key_master.stdout | trim | replace("\t", "  ") }}
+};
+
+controls {
+  inet * port 953
+  allow { 127.0.0.1; {{ rndc_node }}; } keys { "rndc-key"; };
+};
+
+zone "0.0.127.in-addr.arpa" IN {
+  type master;
+{% if ansible_distribution_file_variety == 'RedHat' %}
+  file "data/0.0.127.in-addr.arpa.zone";
+  key-directory "/var/named/data/keys";
+{% elif ansible_distribution_file_variety == 'Debian' %}
+  file "0.0.127.in-addr.arpa.zone";
+  key-directory "/var/cache/bind/keys";
+{% endif %}
+  auto-dnssec maintain;
+  inline-signing yes;
+  notify yes;
+  allow-transfer { {% for host in groups['dns-slaves'] %}{{ hostvars[host]['ansible_host'] }}; {% endfor %}};
+};
+
+zone "{{ zone }}" IN {
+  type master;
+{% if ansible_distribution_file_variety == 'RedHat' %}
+  file "data/{{ zone }}.zone";
+  key-directory "/var/named/data/keys";
+{% elif ansible_distribution_file_variety == 'Debian' %}
+  file "{{ zone }}.zone";
+  key-directory "/var/cache/bind/keys";
+{% endif %}
+  auto-dnssec maintain;
+  inline-signing yes;
+  notify yes;
+  allow-transfer { {% for host in groups['dns-slaves'] %}{{ hostvars[host]['ansible_host'] }}; {% endfor %}};
+};
+
+zone "{{ ptr }}.in-addr.arpa" IN {
+  type master;
+{% if ansible_distribution_file_variety == 'RedHat' %}
+  file "data/{{ ptr }}.in-addr.arpa.zone";
+  key-directory "/var/named/data/keys";
+{% elif ansible_distribution_file_variety == 'Debian' %}
+  file "{{ ptr }}.in-addr.arpa.zone";
+  key-directory "/var/cache/bind/keys";
+{% endif %}
+  auto-dnssec maintain;
+  inline-signing yes;
+  notify yes;
+  allow-transfer { {% for host in groups['dns-slaves'] %}{{ hostvars[host]['ansible_host'] }}; {% endfor %}};
+};
+
