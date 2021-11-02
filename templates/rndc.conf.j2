@@ -1,0 +1,19 @@
+include "/etc/rndc.key";
+
+options {
+  default-key "rndc-key";
+  default-server {% for host in groups['dns-master'] %}{{ hostvars[host]['ansible_host'] }}; {% endfor %}
+  default-port 953;
+};
+
+
+{% for host in groups['all'] %}
+key "{{ hostvars[host]['inventory_hostname'] }}" {
+{{ hostvars[host]['rndc_key']['stdout'] }}
+};
+
+server "{{ hostvars[host]['ansible_facts']['hostname'] }}" {
+        key "{{ hostvars[host]['inventory_hostname'] }}";
+};
+
+{% endfor %}
