@@ -1,0 +1,39 @@
+zone: example.net
+
+ptr: 10.10.10
+
+rndc_node: 10.10.10.1
+
+view:
+  europe: 
+    match: "GB; DE; FR; BE; NL; UA;"
+    file: exampleEU.net.zone
+  others: 
+    match: "any;"
+    file: example.net.zone
+
+
+records:
+  admin1:
+    forward: 101.20.30.40
+    type: A
+    last: 40
+    rev: 30.20.101.in-addr.arpa.
+  admin2:
+    forward: 101.20.30.41
+    type: A
+    last: 41
+    rev: 30.20.101.in-addr.arpa.
+
+
+eu:
+  admin1:
+    forward: 99.11.33.77
+    type: A
+    last: 77
+    rev: 33.11.99.in-addr.arpa.
+  admin2:
+    forward: 99.11.44.88
+    type: A
+    last: 88
+    rev: 44.11.99.in-addr.arpa.

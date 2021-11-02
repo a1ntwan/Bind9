@@ -1,0 +1,19 @@
+;; Before start please check for ansible_all_ipv4_addresses variable
+$ORIGIN .
+$TTL 3600
+{{ zone }}	IN	SOA	{{ ansible_hostname }}.{{ zone }}.	root.{{ zone }}. (
+				26102021		; serial
+				600			; refresh every 10 min
+				300			; retry in 5 min
+				2592000			; expire in 30 days
+				900			; minimum 15 min
+				)
+		IN	NS	{{ ansible_hostname }}.{{ zone }}.
+                IN      A       {{ ansible_host }}
+
+$ORIGIN {{ zone }}.
+{{ ansible_hostname }}	        IN      A       {{ ansible_host }}
+;; Paste here all other servers in the current zone
+{% for key, value in eu.items() %}
+{{ key }}{{ "%+11s" % ("IN") }}{{ "%+7s" % (value.type) }}       {{ value.forward }}
+{% endfor %}
