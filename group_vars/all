@@ -1,0 +1,11 @@
+acl:
+ internal: "10.10.10.0/24; 127.0.0.0/8; ::1/128;"
+ trusted: "10.0.2.0/24;"
+
+cache:
+  max: 256m
+  interval: 10
+  cache_ttl: 120
+  ncache_ttl: 120
+
+rndc_node: 10.10.10.1

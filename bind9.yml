@@ -1,0 +1,135 @@
+---
+- name: simple dns resolver based on BIND9
+  hosts: all
+  become: yes
+
+
+  tasks: 
+    - block:
+      - name: '[RHEL] install packages'
+        yum:
+          name: '{{ item }}'
+          state: latest
+          update_cache: yes
+        loop:
+          - bind
+          - bind-utils
+        tags:
+          - install 
+  
+      - name: '[RHEL] create user named'
+        user:
+          name: named
+          create_home: no
+          system: yes
+  
+      - name: '[RHEL] create directories'
+        file:
+          path: "{{ item }}"
+          state: directory
+          owner: named
+          group: named
+          mode: '0750'
+        loop:
+          - /var/log/named
+          - /run/named
+
+      - name: '[RHEL] create rndc.key on all BIND hosts'
+        shell:
+          cmd: /usr/sbin/rndc-confgen -a -A hmac-sha512 -b 512 &> /dev/null && chown named:named /etc/rndc.key && sed -n 2,3p /etc/rndc.key
+        register: rndc_key
+ 
+      - name: '[RHEL] create rndc.key on the controle node'
+        shell: 
+          cmd: /usr/sbin/rndc-confgen -a -A hmac-sha512 -b 512 &> /dev/null && sed -n 2,3p /etc/rndc.key
+        delegate_to: 127.0.0.1
+        register: rndc_key_master
+  
+      - name: '[RHEL] copy config file'
+        template:
+          src: named.conf.j2
+          dest: /etc/named.conf
+          owner: named
+          group: named
+          mode: '0640'
+          validate: /usr/sbin/named-checkconf -z %s
+        notify: restart-bind
+  
+      - name: 'create rndc.conf'
+        template:
+          src: rndc.conf.j2
+          dest: /etc/rndc.conf
+        delegate_to: 127.0.0.1 
+
+      when: ansible_distribution_file_variety == 'RedHat'
+
+    - block:
+
+      - name: '[Debian] install packages'
+        apt:
+          name: '{{ item }}'
+          state: latest
+          update_cache: yes
+        loop:
+          - bind9
+          - bind9-utils
+        tags:
+          - install 
+
+      - name: '[Debian] create directories'
+        file:
+          path: "{{ item }}"
+          state: directory
+          owner: bind
+          group: bind
+          mode: '0750'
+        loop:
+          - /var/log/named
+          - /run/named
+
+      - name: '[Debian] turn off default zone files'
+        lineinfile:
+          path: /etc/bind/named.conf
+          regexp: 'include "/etc/bind/named.conf.default-zones";'
+          line: '// include "/etc/bind/named.conf.default-zones";'
+
+      - name: '[Debian] create rndc.key on all BIND hosts'
+        shell:
+          cmd: /usr/sbin/rndc-confgen -a -A hmac-sha512 -b 512 &> /dev/null && chown bind:bind /etc/bind/rndc.key && sed -n 2,3p /etc/bind/rndc.key
+        register: rndc_key
+ 
+      - name: '[Debian] create rndc.key on the controle node'
+        shell: 
+          cmd: /usr/sbin/rndc-confgen -a -A hmac-sha512 -b 512 &> /dev/null && sed -n 2,3p /etc/rndc.key
+        delegate_to: 127.0.0.1
+        register: rndc_key_master
+
+      - name: '[Debian] copy config file'
+        template:
+          src: named.conf.j2
+          dest: /etc/bind/named.conf.options
+          owner: bind
+          group: bind
+          mode: '0660'
+          validate: /usr/sbin/named-checkconf -z %s
+        notify: restart-bind
+  
+      - name: '[Debian] create rndc.conf'
+        template:
+          src: rndc.conf.j2
+          dest: /etc/rndc.conf
+        delegate_to: 127.0.0.1 
+
+      when: ansible_distribution_file_variety == 'Debian' 
+
+    - debug:
+        msg: "Debugging BIND"
+      notify: restart-bind
+
+  handlers: 
+
+    - name: restart-bind
+      systemd:
+        name: named.service 
+        state: restarted
+        enabled: yes

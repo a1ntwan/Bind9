@@ -1,0 +1,73 @@
+{% for key, value in acl.items() %}
+acl "{{ key }}" { {{ value }} };
+
+{% endfor %}
+options {
+  version "...";
+{% if ansible_distribution_file_variety == 'RedHat' %}
+  directory "/var/named";
+  dump-file "/var/named/data/cache_dump.db";
+{% elif ansible_distribution_file_variety == 'Debian' %}
+  directory "/var/lib/bind";
+  dump-file "/var/lib/bind/cache_dump.db";
+{% endif %}
+  pid-file "/run/named/named.pid";
+  session-keyfile "/run/named/session.key";
+  # Change to acl name or subnet to restrict access  
+  recursion yes;
+  allow-recursion { trusted; internal; };
+  allow-query-cache { trusted; internal; };
+  allow-query { trusted; internal; };
+  allow-transfer { none; };
+  # The address server listens on, all by default
+  listen-on port 53 { 127.0.0.1; {{ ansible_all_ipv4_addresses | join('; ') }}; };
+  listen-on-v6 port 53 { ::1; {{ ansible_all_ipv6_addresses | join('; ') }}; };
+  dnssec-validation yes;
+  # Cache settings
+  max-cache-size {{ cache.max }};
+  cleaning-interval {{ cache.interval }};
+  max-cache-ttl {{ cache.cache_ttl }};
+  max-ncache-ttl {{ cache.ncache_ttl }};
+};
+
+logging {
+  channel "default" {
+    file "/var/log/named/bind.log" versions 10 size 20m;
+    print-time yes;
+    print-severity yes;
+    print-category yes;
+    severity notice;
+  };
+
+  channel "queries" {
+    file "/var/log/named/queries.log" versions 10 size 20m;
+    print-time yes;
+    print-severity yes;
+    print-category yes;
+    severity debug;
+  };
+
+  category default { default; }; 
+  category queries { queries; }; 
+};
+
+# RNDC settings
+key "rndc-key" {
+  {{ rndc_key_master.stdout | trim | replace("\t", "  ") }}
+};
+
+controls {
+  inet * port 953
+  allow { 127.0.0.1; {{ rndc_node }}; } keys { "rndc-key"; };
+};
+
+# Root zone file
+zone "." IN {
+        type hint;
+{% if ansible_distribution_file_variety == 'RedHat' %}
+        file "named.ca";
+{% elif ansible_distribution_file_variety == 'Debian' %}
+        file "/usr/share/dns/root.hints";
+{% endif %}
+};
+
