@@ -7,4 +7,4 @@ These are 4 different variations of BIND9 deployment represented at each branch:
 
 These playbooks are tested and valid for both **RHEL** and **Debian** based distros, though some distros may predictably cause some sort of trouble. 
 
-Don't forget to check **README2.md** (on other branches) for variation specific details. Good luck!
+Don't forget to check **README+.md** (on other branches) for variation specific details. Good luck!
